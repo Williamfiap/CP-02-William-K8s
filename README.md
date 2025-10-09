@@ -32,22 +32,19 @@
 ```
 CP-02-William-K8s/
 ├── docs/                             # Pasta para prints/evidências
-│   ├── README.md                     # Guia de nomenclatura dos prints
 │   ├── 01-cluster-info.png           # Cluster Kind funcionando
-│   ├── 02-namespace.png              # Namespace producao criado
-│   ├── 03-recursos-gerais.png        # Todos recursos aplicados
-│   ├── 04-pods-iniciais.png          # Pods com 3 réplicas
-│   ├── 05-service.png                # Service NodePort 30080
-│   ├── 06-antes-scale.png            # Antes escalabilidade (3 pods)
-│   ├── 07-depois-scale.png           # Depois escalabilidade (5 pods)
-│   ├── 08-antes-exclusao.png         # Antes teste resiliência
-│   ├── 09-depois-recuperacao.png     # Depois recuperação automática
-│   ├── 10-aplicacao-funcionando.png  # Aplicação acessível
-│   └── 11-aplicacao-funcionando.png  # Evidência adicional
+│   ├── comandos.png                  # Comandos e recursos aplicados
+│   ├── labels.png                    # Labels dos pods
+│   ├── nodeport.png                  # Aplicação funcionando via NodePort
+│   ├── scaling.png                   # Teste de escalabilidade (3→5 réplicas)
+│   ├── deletepod.png                 # Teste de resiliência/exclusão de pod
+│   ├── 10-aplicacao-funcionando.png  # Aplicação via port-forward
+│   └── 11-aplicacao-funcionando.png  # Evidência adicional port-forward
 ├── namespace.yaml                    # Definição do namespace producao
 ├── configmap.yaml                    # HTML customizado para a aplicação
 ├── deployment.yaml                   # Deployment com 3 réplicas
 ├── service.yaml                      # Service NodePort na porta 30080
+├── kind-config.yaml                  # Configuração do cluster Kind
 └── README.md                         # Esta documentação completa
 ```
 
@@ -85,7 +82,7 @@ kind version
 
 **Criar cluster Kind:**
 ```bash
-kind create cluster --name techfleet-cluster
+kind create cluster --name techfleet-cluster --config kind-config.yaml
 ```
 
 **Configurar contexto:**
@@ -102,30 +99,6 @@ kubectl cluster-info
 
 ![Cluster Info](docs/01-cluster-info.png)
 
-
-### **Pré-requisitos - Verificação:**
-
-**Verificar kubectl:**
-```bash
-kubectl version --client
-```
-
-**Verificar cluster ativo:**
-```bash
-kubectl cluster-info
-```
-
-**Ver contexto atual:**
-```bash
-kubectl config current-context
-```
-
-**Usar contexto correto:**
-```bash
-kubectl config use-context kind-techfleet-cluster
-```
----
-
 ### **Etapa 1: Criar o Namespace**
 
 **Aplicar o namespace:**
@@ -135,20 +108,8 @@ kubectl apply -f namespace.yaml
 
 **Verificar se foi criado:**
 ```bash
-kubectl get namespaces | grep producao
+kubectl get ns
 ```
-
-**📸 EVIDÊNCIA:**
-
-![Namespace](docs/02-namespace.png)
-
-**Resultado esperado:**
-```
-namespace/producao created
-producao   Active   <age>
-```
-
----
 
 ### **Etapa 2: Aplicar o ConfigMap (HTML Customizado)**
 
@@ -162,14 +123,6 @@ kubectl apply -f configmap.yaml
 kubectl get configmap -n producao
 ```
 
-**Resultado esperado:**
-```
-configmap/app-portal-html created
-NAME              DATA   AGE
-app-portal-html   1      <age>
-```
-
----
 
 ### **Etapa 3: Criar o Deployment (3 Réplicas)**
 
@@ -183,19 +136,6 @@ kubectl apply -f deployment.yaml
 kubectl get deployment -n producao
 ```
 
-**Ver os pods sendo criados:**
-```bash
-kubectl get pods -n producao -w
-```
-
-**Resultado esperado:**
-```
-deployment.apps/app-portal created
-NAME         READY   UP-TO-DATE   AVAILABLE   AGE
-app-portal   3/3     3            3           <age>
-```
-
----
 
 ### **Etapa 4: Criar o Service NodePort**
 
@@ -209,24 +149,6 @@ kubectl apply -f service.yaml
 kubectl get svc -n producao
 ```
 
-**Ver detalhes do service:**
-```bash
-kubectl describe svc app-portal-service -n producao
-```
-
-**📸 EVIDÊNCIA:** `kubectl get svc -n producao`
-
-![Service](docs/05-service.png)
-
-**Resultado esperado:**
-```
-service/app-portal-service created
-NAME                 TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
-app-portal-service   NodePort   10.96.xxx.xxx   <none>        80:30080/TCP   <age>
-```
-
----
-
 ### **Etapa 5: Verificar Status Geral**
 
 **Ver todos os recursos no namespace producao:**
@@ -236,27 +158,30 @@ kubectl get all -n producao
 
 **📸 EVIDÊNCIA:** 
 
-![Recursos Gerais](docs/03-recursos-gerais.png)
+![Recursos Gerais](docs/comandos.png)
 
 **Ver labels dos pods:**
 ```bash
 kubectl get pods -n producao --show-labels
 ```
 
-**Verificar se os pods estão prontos:**
-```bash
-kubectl get pods -n producao -l app=app-portal
-```
+![Labels](docs/labels.png)
 
-**📸 EVIDÊNCIA:**
-
-![Pods Iniciais](docs/04-pods-iniciais.png)
-
----
 
 ### **Etapa 6: Testar Conectividade**
 
-**Método 1: Port-forward:**
+
+**Método 1: NodePort:**
+
+
+**📸 EVIDÊNCIA:**
+
+![Aplicação Funcionando](docs/nodeport.png)
+
+---
+
+
+**Método 2: Port-forward:**
 ```bash
 kubectl port-forward svc/app-portal-service 8080:80 -n producao
 ```
@@ -277,7 +202,7 @@ kubectl port-forward svc/app-portal-service 8080:80 -n producao
 
 **Estado inicial (3 réplicas):**
 ```bash
-kubectl get pods -n producao -l app=app-portal
+kubectl get pods -n producao
 ```
 
 **Escalar para 5 réplicas:**
@@ -287,123 +212,35 @@ kubectl scale deployment app-portal --replicas=5 -n producao
 
 **Verificar o processo de scaling:**
 ```bash
-kubectl get pods -n producao -l app=app-portal -w
-```
-
-**Aguardar todos ficarem prontos:**
-```bash
-kubectl wait --for=condition=ready pod -l app=app-portal -n producao --timeout=120s
-```
-
-**Verificar resultado final:**
-```bash
-kubectl get deployment -n producao
-```
-
-**Comandos para evidências:**
-
-**Antes do scale:**
-```bash
-echo "=== ANTES DO SCALE ==="
-```
-
-**Ver pods antes:**
-```bash
-kubectl get pods -n producao -l app=app-portal
+kubectl get pods -n producao
 ```
 
 **📸 EVIDÊNCIA:**
 
-![Antes Scale](docs/06-antes-scale.png)
-
-**Depois do scale:**
-```bash
-echo "=== DEPOIS DO SCALE ==="
-```
-
-**Ver pods depois:**
-```bash
-kubectl get pods -n producao -l app=app-portal
-```
-
-**📸 EVIDÊNCIA:**
-![Depois Scale](docs/07-depois-scale.png)
-
----
+![Teste de Escalabilidade](docs/scaling.png)
 
 ### **Etapa 8: Teste de Resiliência (Exclusão de Pod)**
 
 **Ver pods atuais:**
 ```bash
-kubectl get pods -n producao -l app=app-portal
+kubectl get pods -n producao
 ```
 
-**Pegar o nome de um pod para deletar:**
+**Pegar o nome de um pod e deletar:**
 ```bash
-POD_NAME=$(kubectl get pods -n producao -l app=app-portal -o jsonpath='{.items[0].metadata.name}')
-```
-
-**Mostrar pod a ser deletado:**
-```bash
-echo "Pod a ser deletado: $POD_NAME"
-```
-
-**Deletar o pod:**
-```bash
-kubectl delete pod $POD_NAME -n producao
+kubectl delete pod NOME-DO-POD -n producao
 ```
 
 **Observar a recuperação automática:**
 ```bash
-kubectl get pods -n producao -l app=app-portal -w
-```
-
-**Verificar que um novo pod foi criado:**
-```bash
-kubectl get pods -n producao -l app=app-portal
-```
-
-**Para evidências:**
-
-**Ver pods antes:**
-```bash
-kubectl get pods -n producao -l app=app-portal
+kubectl get pods -n producao
 ```
 
 **📸 EVIDÊNCIA:**
 
-![Antes Exclusão](docs/08-antes-exclusao.png)
+![Teste de Resiliência](docs/deletepod.png)
 
-**Executar exclusão:**
-```bash
-echo "=== DELETANDO POD ==="
-```
 
-**Deletar pod:**
-```bash
-kubectl delete pod $POD_NAME -n producao
-```
-
-**Aguardar 10 segundos:**
-```bash
-sleep 10
-```
-
-**Após recuperação:**
-```bash
-echo "=== APÓS RECUPERAÇÃO ==="
-```
-
-**Ver pods após:**
-```bash
-kubectl get pods -n producao -l app=app-portal
-```
-
-**📸 EVIDÊNCIA:**
-
-![Depois Recuperação](docs/09-depois-recuperacao.png)
-
----
 
 **Para remover tudo (quando terminar os testes):**
 ```bash
